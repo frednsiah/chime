@@ -6,9 +6,21 @@
  * Date: 6/12/2018
  * Time: 2:02 PM
  */
+require __DIR__ . '/vendor/autoload.php';
+
+use Carbon\Carbon;
 
 class BellCounter
 {
+
+    private $carbonStart;
+
+    private $carbonEnd;
+
+    public function __construct() {
+        date_default_timezone_set('UTC');
+    }
+    
     /**
      * Function to validate time input
      * @param string $time
@@ -20,14 +32,11 @@ class BellCounter
 
     /**
      * This function validates the time range to ensure its chime friendliness
-     * @param string $start
-     * @param string $end
+
      * @return bool
      */
-    private function validateTimeRange(string $start, string $end){
-        $startTime = explode(":", $start);
-        $endTime = explode(":", $end);
-        if($startTime[1] !== '00' && $endTime[1] !== '00' && ($startTime[0] == $endTime[0]) && (($endTime[1] - $startTime[1]) > 0)) {
+    private function validateTimeRange(){
+        if($this->carbonStart->copy()->startOfHour() != $this->carbonStart && $this->carbonEnd !== $this->carbonEnd->copy()->startOfHour() && ($this->carbonStart->diffInHours($this->carbonEnd) == 0) && ( $this->carbonStart->diffInMinutes($this->carbonEnd, false) > 0)) {
             return false;
         }
         return true;
@@ -35,43 +44,33 @@ class BellCounter
 
     /**
      * Function to convert 24 hour time to 12-hour time and returns only the hour, used to count the number of chimes
-     * @param $time
+
      * @return false|string
      */
     private function getHourCount($time) {
-        return date('g', strtotime($time));
+        return $time->format('g');
     }
 
     /**
      * Function to format start time. If time is not exactly on the hour, it adds an hour to the time and set minute to 00
-     * @param $time
      * @return string
      */
-    private function formatStartTime($time){
-        $startTime = explode(":", $time);
-
-        if(isset($startTime[0], $startTime[1]) && $startTime[1] !== '00') {
-            $startTime[0] = ((int) $startTime[0] + 1) % 24;
-            $startTimeFormatted = sprintf('%02d', $startTime[0]) . ':' . '00';
-            return $startTimeFormatted;
+    private function formatStartTime(){
+        if($this->carbonStart != $this->carbonStart->copy()->startOfHour()) {
+            return $this->carbonStart->copy()->startofHour()->addHour();
         }
-        return $time;
-
+        return $this->carbonStart;
     }
 
     /**
      * Function to format end time. If time is not exactly on the hour, it sets the minute to 00
-     * @param $time
      * @return string
      */
-    private function formatEndTime ($time) {
-        $endTime = explode(":", $time);
-
-        if(isset($endTime[0], $endTime[1]) && $endTime[1] !== '00') {
-            $endTimeFormatted = $endTime[0] . ':' . '00';
-            return $endTimeFormatted;
+    private function formatEndTime () {
+        if($this->carbonEnd != $this->carbonEnd->copy()->startOfHour()) {
+            return $this->carbonEnd->copy()->startofHour();
         }
-        return $time;
+        return $this->carbonEnd;
     }
 
     /**
@@ -80,14 +79,15 @@ class BellCounter
      * @param int $end
      * @return int
      */
-    public function counter (int $start, int $end) {
-        $chimeCount = 0;
+    public function counter (int $start, int $end, int $chimeCount = 0) {
 
         while (true) {
             if($start % 24 == 0) {
                 $start = 0;
             }
-            $chimeCount += $this->getHourCount(sprintf('%02d', $start) . ':' . '00');
+            $startCarbon = Carbon::now();
+            $startCarbon->hour = $start;
+            $chimeCount += $this->getHourCount($startCarbon);
 
             if($start == $end) {
                 break;
@@ -110,17 +110,26 @@ class BellCounter
             throw new Exception('Time format is incorrect.');
         }
 
-        if(!$this->validateTimeRange($start, $end)) {
-            throw new Exception('No hour in range, chime failed');
+        $this->carbonStart = Carbon::createFromFormat('G:i', $start);
+        $this->carbonEnd = Carbon::createFromFormat('G:i', $end);
+
+        if(!$this->validateTimeRange()) {
+            return 0;
         }
-        $formattedStart = $this->formatStartTime($start);
-        $formattedEnd = $this->formatEndTime($end);
 
-        $startTime = explode(":", $formattedStart);
-        $startHour = (int) $startTime[0];
-        $endTime = explode(":", $formattedEnd);
-        $endHour = (int) $endTime[0];
+        $formattedStart = $this->formatStartTime();
+        $formattedEnd = $this->formatEndTime();
 
-        return $this->counter($startHour, $endHour);
+        $start = (int) $formattedStart->format('G');
+ 
+        $end = (int) $formattedEnd->format('G');
+
+        if($this->carbonStart == $this->carbonEnd) {
+            $chimeCount = (int) $this->formatStartTime()->format('g');
+            //return $chimeCount;
+            return $this->counter($start + 1, $end,  $chimeCount);
+        }
+
+        return $this->counter($start, $end);
     }
 }
